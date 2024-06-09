@@ -10,6 +10,7 @@ TEST_URL = "http://cp.cloudflare.com"
 TIMEOUT = 5000  # Timeout in milliseconds
 RETRIES = 15 * 6
 RETRY_DELAY = 5  # Delay between retries in seconds
+MIN_UPTIME = 90  # in percent
 CHECK_INTERVAL = 60  # Fallback check interval in seconds
 UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
 MAX_WORKERS = 1000  # Maximum number of threads for parallel processing
@@ -40,7 +41,7 @@ def get_real_delay_multi(proxy_name):
         except requests.exceptions.RequestException as e:
             print(f"Error getting delay for {proxy_name}: {e}")
 
-        if delays.count(TIMEOUT) >= max(1, RETRIES / 10):
+        if delays.count(TIMEOUT) >= max(1, RETRIES * (1 - (MIN_UPTIME/100))):
             break
 
         if i < RETRIES - 1:
