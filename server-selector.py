@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 API_URL = "http://192.168.27.208:9090"
+# If you want to use sing box as relay (e.g in OpenVPN) then setup a simple http server in your OpenVPN server and set this to your http://Server-IP
 # TEST_URL = "https://www.gstatic.com/generate_204"
 TEST_URL = "http://cp.cloudflare.com"
 TIMEOUT = 5000  # Timeout in milliseconds
@@ -85,6 +86,7 @@ def update_proxy_delay(proxy_name, proxy_data, sampling_type):
         delay = get_real_delay_single(proxy_name)
         proxy_data["delay_single"] = delay
         print(f"Updated single delay for {proxy_name}: {delay} ms")
+    # TODO: Add Sampling_type for OpenVPN delay check
 
 
 def sort_proxies_by_delay(proxies, sampling_type):
