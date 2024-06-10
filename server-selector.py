@@ -4,7 +4,10 @@ import json
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
-API_URL = "http://192.168.27.208:9090"
+# API
+API_URL = "http://192.168.27.1:6756"
+BEARER_TOKEN = ""  # Bearer token for authorization
+
 # If you want to use sing box as relay (e.g in OpenVPN) then setup a simple http server in your OpenVPN server and set this to your http://Server-IP
 # TEST_URL = "https://www.gstatic.com/generate_204"
 TEST_URL = "http://cp.cloudflare.com"
@@ -17,9 +20,16 @@ UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
 MAX_WORKERS = 1000  # Maximum number of threads for parallel processing
 
 
+# Function to get headers with the Bearer token
+def get_headers():
+    return {
+        "Authorization": f"Bearer {BEARER_TOKEN}"
+    }
+
+
 def get_proxies():
     """Gets all proxies from the Clash API."""
-    response = requests.get(f"{API_URL}/proxies")
+    response = requests.get(f"{API_URL}/proxies", headers=get_headers())
     if response.status_code == 200:
         return response.json()["proxies"]
     else:
@@ -33,6 +43,7 @@ def get_real_delay_multi(proxy_name):
         try:
             response = requests.get(
                 f"{API_URL}/proxies/{proxy_name}/delay",
+                headers=get_headers(),
                 params={"timeout": TIMEOUT, "url": TEST_URL},
             )
             if response.status_code == 200:
@@ -59,6 +70,7 @@ def get_real_delay_single(proxy_name):
     """Gets the real delay of a proxy by single measurements."""
     response = requests.get(
         f"{API_URL}/proxies/{proxy_name}/delay",
+        headers=get_headers(),
         params={"timeout": TIMEOUT, "url": TEST_URL},
     )
     if response.status_code == 200:
@@ -104,10 +116,12 @@ def fallback_to_working_proxy_by_order(sorted_proxies):
     for proxy_name, _ in sorted_proxies:
         try:
             response = requests.get(f"{API_URL}/proxies/{proxy_name}/delay",
+                                    headers=get_headers(),
                                     params={"timeout": TIMEOUT, "url": TEST_URL})
             if response.status_code == 200:
                 print(f"Switching to {proxy_name}")
                 requests.put(f"{API_URL}/proxies/proxy",
+                             headers=get_headers(),
                              json={"name": proxy_name})
                 return
             else:
@@ -127,6 +141,7 @@ def fallback_to_working_proxy_by_latency(sorted_proxies):
     proxy_name = sorted_top_proxies[0][0]
     print(f"Switching to {proxy_name}")
     requests.put(f"{API_URL}/proxies/proxy",
+                 headers=get_headers(),
                  json={"name": proxy_name})
     return
 
@@ -155,7 +170,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 # TODO: Parallel fallback check
 # TODO: load balance the top 5
