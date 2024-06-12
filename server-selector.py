@@ -11,13 +11,16 @@ BEARER_TOKEN = ""  # Bearer token for authorization
 # If you want to use sing box as relay (e.g in OpenVPN) then setup a simple http server in your OpenVPN server and set this to your http://Server-IP
 # TEST_URL = "https://www.gstatic.com/generate_204"
 TEST_URL = "http://cp.cloudflare.com"
-TIMEOUT = 5000  # Timeout in milliseconds
-RETRIES = 15 * 6
-RETRY_DELAY = 5  # Delay between retries in seconds
-MIN_UPTIME = 90  # in percent
+TIMEOUT = 2000  # Timeout in milliseconds
+RETRIES = 15 * 4
+RETRY_DELAY = 10  # Delay between retries in seconds
+MIN_UPTIME = 50  # in percent
 CHECK_INTERVAL = 60  # Fallback check interval in seconds
 UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
-MAX_WORKERS = 1000  # Maximum number of threads for parallel processing
+MAX_WORKERS = 300  # Maximum number of threads for parallel processing
+
+# Proxy
+PROXY_GROUP_NAME = "select"
 
 
 # Function to get headers with the Bearer token
@@ -45,11 +48,16 @@ def get_real_delay_multi(proxy_name):
                 f"{API_URL}/proxies/{proxy_name}/delay",
                 headers=get_headers(),
                 params={"timeout": TIMEOUT, "url": TEST_URL},
+                timeout=(TIMEOUT*10)/1000
             )
             if response.status_code == 200:
                 delays.append(response.json()["delay"])
             else:
                 delays.append(TIMEOUT)
+
+        except requests.exceptions.Timeout:
+            delays.append(TIMEOUT)
+
         except requests.exceptions.RequestException as e:
             print(f"Error getting delay for {proxy_name}: {e}")
 
@@ -68,15 +76,25 @@ def get_real_delay_multi(proxy_name):
 
 def get_real_delay_single(proxy_name):
     """Gets the real delay of a proxy by single measurements."""
-    response = requests.get(
-        f"{API_URL}/proxies/{proxy_name}/delay",
-        headers=get_headers(),
-        params={"timeout": TIMEOUT, "url": TEST_URL},
-    )
-    if response.status_code == 200:
-        return response.json()["delay"]
-    else:
-        return TIMEOUT
+    GET_RETRIES = 0
+    while True:
+        try:
+            response = requests.get(
+                f"{API_URL}/proxies/{proxy_name}/delay",
+                headers=get_headers(),
+                params={"timeout": TIMEOUT, "url": TEST_URL},
+                timeout=(TIMEOUT*100)/1000
+            )
+            if response.status_code == 200:
+                return response.json()["delay"]
+            else:
+                return TIMEOUT
+        except requests.exceptions.Timeout:
+            if GET_RETRIES >= 2:
+                return TIMEOUT
+            else:
+                GET_RETRIES += 1
+                continue
 
 
 def update_delay_info(proxies, sampling_type):
@@ -111,6 +129,16 @@ def sort_proxies_by_delay(proxies, sampling_type):
     return sorted(sortable_proxies, key=lambda item: item[1].get("delay_multi" if sampling_type == "multi" else "delay_single", float("inf")))
 
 
+def filter_single_working_proxies(proxies):
+    working_proxies = [
+        (proxy_name, proxy_data)
+        for proxy_name, proxy_data in proxies.items()
+        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC")
+        and proxy_data.get("delay_single", float("inf")) < TIMEOUT
+    ]
+    return working_proxies
+
+
 def fallback_to_working_proxy_by_order(sorted_proxies):
     """Finds the first working proxy in the sorted list and switches to it."""
     for proxy_name, _ in sorted_proxies:
@@ -120,7 +148,7 @@ def fallback_to_working_proxy_by_order(sorted_proxies):
                                     params={"timeout": TIMEOUT, "url": TEST_URL})
             if response.status_code == 200:
                 print(f"Switching to {proxy_name}")
-                requests.put(f"{API_URL}/proxies/proxy",
+                requests.put(f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
                              headers=get_headers(),
                              json={"name": proxy_name})
                 return
@@ -140,7 +168,7 @@ def fallback_to_working_proxy_by_latency(sorted_proxies):
 
     proxy_name = sorted_top_proxies[0][0]
     print(f"Switching to {proxy_name}")
-    requests.put(f"{API_URL}/proxies/proxy",
+    requests.put(f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
                  headers=get_headers(),
                  json={"name": proxy_name})
     return
@@ -168,8 +196,29 @@ def main():
             time.sleep(60)  # Wait for a minute before trying again
 
 
-if __name__ == "__main__":
-    main()
+def light_main():
+    """Main loop for updating delay info and performing fallback."""
+    while True:
+        try:
+            proxies = get_proxies()
+            update_delay_info(proxies, sampling_type="single")
+            working_proxies = dict(filter_single_working_proxies(proxies))
+            update_delay_info(working_proxies, sampling_type="multi")
+            sorted_proxies = sort_proxies_by_delay(
+                working_proxies, sampling_type="multi")
 
-# TODO: Parallel fallback check
-# TODO: load balance the top 5
+            # Run fallback check every CHECK_INTERVAL seconds
+            start_time = datetime.now()
+            while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
+                fallback_to_working_proxy_by_order(sorted_proxies)
+                # fallback_to_working_proxy_by_latency(sorted_proxies)
+                time.sleep(CHECK_INTERVAL)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            time.sleep(60)  # Wait for a minute before trying again
+
+
+if __name__ == "__main__":
+    # main()
+    light_main()
