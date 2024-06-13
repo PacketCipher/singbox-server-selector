@@ -1,4 +1,5 @@
 ### README
 #### TODO: 
 - Parallel fallback check
-- load balance the top 5
+- Load balance the top 5
+- Add Sampling_type for OpenVPN delay check

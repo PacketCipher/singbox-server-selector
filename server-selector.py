@@ -1,8 +1,7 @@
-import requests
+import aiohttp
+import asyncio
 import time
-import json
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
 
 # API
 API_URL = "http://192.168.27.1:6756"
@@ -11,17 +10,19 @@ BEARER_TOKEN = ""  # Bearer token for authorization
 # If you want to use sing box as relay (e.g in OpenVPN) then setup a simple http server in your OpenVPN server and set this to your http://Server-IP
 # TEST_URL = "https://www.gstatic.com/generate_204"
 TEST_URL = "http://cp.cloudflare.com"
-TIMEOUT = 2000  # Timeout in milliseconds
+TIMEOUT = 5000  # Timeout in milliseconds
 RETRIES = 15 * 4
 RETRY_DELAY = 10  # Delay between retries in seconds
-MIN_UPTIME = 50  # in percent
+MIN_UPTIME = 90  # in percent
 CHECK_INTERVAL = 60  # Fallback check interval in seconds
 UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
 MAX_WORKERS = 300  # Maximum number of threads for parallel processing
 
+# LightMode
+LIGHTMODE_MAXIMUM_SERVERS = 30
+
 # Proxy
 PROXY_GROUP_NAME = "select"
-
 
 # Function to get headers with the Bearer token
 def get_headers():
@@ -29,43 +30,42 @@ def get_headers():
         "Authorization": f"Bearer {BEARER_TOKEN}"
     }
 
-
-def get_proxies():
+async def get_proxies(session):
     """Gets all proxies from the Clash API."""
-    response = requests.get(f"{API_URL}/proxies", headers=get_headers())
-    if response.status_code == 200:
-        return response.json()["proxies"]
-    else:
-        raise Exception(f"Failed to get proxies: {response.status_code}")
+    async with session.get(f"{API_URL}/proxies", headers=get_headers()) as response:
+        if response.status == 200:
+            result = await response.json(content_type=None)
+            return result["proxies"]
+        else:
+            raise Exception(f"Failed to get proxies: {response.status}")
 
-
-def get_real_delay_multi(proxy_name):
+async def get_real_delay_multi(session, proxy_name):
     """Gets the real delay of a proxy by averaging multiple measurements."""
     delays = []
     for i in range(RETRIES):
         try:
-            response = requests.get(
+            async with session.get(
                 f"{API_URL}/proxies/{proxy_name}/delay",
                 headers=get_headers(),
                 params={"timeout": TIMEOUT, "url": TEST_URL},
-                timeout=(TIMEOUT*10)/1000
-            )
-            if response.status_code == 200:
-                delays.append(response.json()["delay"])
-            else:
-                delays.append(TIMEOUT)
+                timeout=TIMEOUT/1000
+            ) as response:
+                if response.status == 200:
+                    delays.append((await response.json())["delay"])
+                else:
+                    delays.append(TIMEOUT)
 
-        except requests.exceptions.Timeout:
+        except asyncio.TimeoutError:
             delays.append(TIMEOUT)
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"Error getting delay for {proxy_name}: {e}")
 
         if delays.count(TIMEOUT) >= max(1, RETRIES * (1 - (MIN_UPTIME/100))):
             break
 
         if i < RETRIES - 1:
-            time.sleep(RETRY_DELAY)
+            await asyncio.sleep(RETRY_DELAY)
 
     if len(delays) == RETRIES:
         print(delays)
@@ -73,51 +73,46 @@ def get_real_delay_multi(proxy_name):
     else:
         return float("inf")  # Return infinity if all retries fail
 
-
-def get_real_delay_single(proxy_name):
-    """Gets the real delay of a proxy by single measurements."""
-    GET_RETRIES = 0
-    while True:
+async def get_real_delay_single(session, proxy_name):
+    """Gets the real delay of a proxy by single measurements, with retries on TimeoutError."""
+    number_of_attemps = 5
+    for attempt in range(number_of_attemps):
         try:
-            response = requests.get(
+            async with session.get(
                 f"{API_URL}/proxies/{proxy_name}/delay",
                 headers=get_headers(),
                 params={"timeout": TIMEOUT, "url": TEST_URL},
-                timeout=(TIMEOUT*100)/1000
-            )
-            if response.status_code == 200:
-                return response.json()["delay"]
+                timeout=TIMEOUT/1000
+            ) as response:
+                if response.status == 200:
+                    return (await response.json())["delay"]
+                else:
+                    return TIMEOUT
+        except asyncio.TimeoutError:
+            if attempt < number_of_attemps - 1:
+                print(f"Timeout error for {proxy_name}, retrying in 10 seconds...")
+                await asyncio.sleep(10)
             else:
                 return TIMEOUT
-        except requests.exceptions.Timeout:
-            if GET_RETRIES >= 2:
-                return TIMEOUT
-            else:
-                GET_RETRIES += 1
-                continue
 
-
-def update_delay_info(proxies, sampling_type):
+async def update_delay_info(session, proxies, sampling_type):
     """Updates the delay information for all proxies in parallel."""
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        for proxy_name, proxy_data in proxies.items():
-            if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC"):
-                executor.submit(update_proxy_delay, proxy_name,
-                                proxy_data, sampling_type)
+    tasks = []
+    for proxy_name, proxy_data in proxies.items():
+        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC"):
+            tasks.append(update_proxy_delay(session, proxy_name, proxy_data, sampling_type))
+    await asyncio.gather(*tasks)
 
-
-def update_proxy_delay(proxy_name, proxy_data, sampling_type):
+async def update_proxy_delay(session, proxy_name, proxy_data, sampling_type):
     """Updates the delay for a single proxy."""
     if sampling_type == "multi":
-        delay = get_real_delay_multi(proxy_name)
+        delay = await get_real_delay_multi(session, proxy_name)
         proxy_data["delay_multi"] = delay
         print(f"Updated multi delay for {proxy_name}: {delay} ms")
     elif sampling_type == "single":
-        delay = get_real_delay_single(proxy_name)
+        delay = await get_real_delay_single(session, proxy_name)
         proxy_data["delay_single"] = delay
         print(f"Updated single delay for {proxy_name}: {delay} ms")
-    # TODO: Add Sampling_type for OpenVPN delay check
-
 
 def sort_proxies_by_delay(proxies, sampling_type):
     """Sorts the proxies by their delay, excluding Direct, Reject, and DNS types."""
@@ -128,7 +123,6 @@ def sort_proxies_by_delay(proxies, sampling_type):
     ]
     return sorted(sortable_proxies, key=lambda item: item[1].get("delay_multi" if sampling_type == "multi" else "delay_single", float("inf")))
 
-
 def filter_single_working_proxies(proxies):
     working_proxies = [
         (proxy_name, proxy_data)
@@ -136,89 +130,89 @@ def filter_single_working_proxies(proxies):
         if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC")
         and proxy_data.get("delay_single", float("inf")) < TIMEOUT
     ]
-    return working_proxies
+    return sorted(working_proxies, key=lambda item: item[1].get("delay_single", float("inf")))
 
-
-def fallback_to_working_proxy_by_order(sorted_proxies):
+async def fallback_to_working_proxy_by_order(session, sorted_proxies):
     """Finds the first working proxy in the sorted list and switches to it."""
     for proxy_name, _ in sorted_proxies:
         try:
-            response = requests.get(f"{API_URL}/proxies/{proxy_name}/delay",
-                                    headers=get_headers(),
-                                    params={"timeout": TIMEOUT, "url": TEST_URL})
-            if response.status_code == 200:
-                print(f"Switching to {proxy_name}")
-                requests.put(f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
-                             headers=get_headers(),
-                             json={"name": proxy_name})
-                return
-            else:
-                print(f"{proxy_name} is not responding. Trying the next one...")
-        except requests.exceptions.RequestException as e:
+            async with session.get(
+                f"{API_URL}/proxies/{proxy_name}/delay",
+                headers=get_headers(),
+                params={"timeout": TIMEOUT, "url": TEST_URL}
+            ) as response:
+                if response.status == 200:
+                    print(f"Switching to {proxy_name}")
+                    await session.put(
+                        f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
+                        headers=get_headers(),
+                        json={"name": proxy_name}
+                    )
+                    return
+                else:
+                    print(f"{proxy_name} is not responding. Trying the next one...")
+        except Exception as e:
             print(f"Error checking {proxy_name}: {e}")
     print("No working proxies found.")
 
-
-def fallback_to_working_proxy_by_latency(sorted_proxies):
+async def fallback_to_working_proxy_by_latency(session, sorted_proxies):
     """Finds the lowest delay working proxy in the sorted list and switches to it."""
     top_proxies = sorted_proxies[:10]
-    update_delay_info(dict(top_proxies), sampling_type="single")
-    sorted_top_proxies = sort_proxies_by_delay(
-        dict(top_proxies), sampling_type="single")
+    await update_delay_info(session, dict(top_proxies), sampling_type="single")
+    sorted_top_proxies = sort_proxies_by_delay(dict(top_proxies), sampling_type="single")
 
     proxy_name = sorted_top_proxies[0][0]
     print(f"Switching to {proxy_name}")
-    requests.put(f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
-                 headers=get_headers(),
-                 json={"name": proxy_name})
-    return
+    await session.put(
+        f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
+        headers=get_headers(),
+        json={"name": proxy_name}
+    )
 
-
-def main():
+async def main():
     """Main loop for updating delay info and performing fallback."""
-    while True:
-        try:
-            proxies = get_proxies()
-            # Update delay info in parallel
-            update_delay_info(proxies, sampling_type="multi")
-            sorted_proxies = sort_proxies_by_delay(
-                proxies, sampling_type="multi")
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                proxies = await get_proxies(session)
+                # Update delay info in parallel
+                await update_delay_info(session, proxies, sampling_type="multi")
+                sorted_proxies = sort_proxies_by_delay(proxies, sampling_type="multi")
 
-            # Run fallback check every CHECK_INTERVAL seconds
-            start_time = datetime.now()
-            while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
-                fallback_to_working_proxy_by_order(sorted_proxies)
-                # fallback_to_working_proxy_by_latency(sorted_proxies)
-                time.sleep(CHECK_INTERVAL)
+                # Run fallback check every CHECK_INTERVAL seconds
+                start_time = datetime.now()
+                while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
+                    await fallback_to_working_proxy_by_order(session, sorted_proxies)
+                    # await fallback_to_working_proxy_by_latency(session, sorted_proxies)
+                    await asyncio.sleep(CHECK_INTERVAL)
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            time.sleep(60)  # Wait for a minute before trying again
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                await asyncio.sleep(60)  # Wait for a minute before trying again
 
-
-def light_main():
+async def light_main():
     """Main loop for updating delay info and performing fallback."""
-    while True:
-        try:
-            proxies = get_proxies()
-            update_delay_info(proxies, sampling_type="single")
-            working_proxies = dict(filter_single_working_proxies(proxies))
-            update_delay_info(working_proxies, sampling_type="multi")
-            sorted_proxies = sort_proxies_by_delay(
-                working_proxies, sampling_type="multi")
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                proxies = await get_proxies(session)
+                await update_delay_info(session, proxies, sampling_type="single")
+                working_proxies = filter_single_working_proxies(proxies)
+                working_proxies = dict(working_proxies[:LIGHTMODE_MAXIMUM_SERVERS])
+                await update_delay_info(session, working_proxies, sampling_type="multi")
+                sorted_proxies = sort_proxies_by_delay(working_proxies, sampling_type="multi")
 
-            # Run fallback check every CHECK_INTERVAL seconds
-            start_time = datetime.now()
-            while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
-                fallback_to_working_proxy_by_order(sorted_proxies)
-                # fallback_to_working_proxy_by_latency(sorted_proxies)
-                time.sleep(CHECK_INTERVAL)
+                # Run fallback check every CHECK_INTERVAL seconds
+                start_time = datetime.now()
+                while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
+                    await fallback_to_working_proxy_by_order(session, sorted_proxies)
+                    # await fallback_to_working_proxy_by_latency(session, sorted_proxies)
+                    await asyncio.sleep(CHECK_INTERVAL)
 
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            time.sleep(60)  # Wait for a minute before trying again
-
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                await asyncio.sleep(60)  # Wait for a minute before trying again
 
 if __name__ == "__main__":
-    # main()
-    light_main()
+    # asyncio.run(main())
+    asyncio.run(light_main())
