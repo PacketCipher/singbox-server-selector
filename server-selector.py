@@ -1,27 +1,21 @@
 import aiohttp
 import asyncio
+import os
 import time
 from datetime import datetime, timedelta
 
-# API
-API_URL = "http://192.168.27.1:6756"
-BEARER_TOKEN = ""  # Bearer token for authorization
-
-# If you want to use sing box as relay (e.g in OpenVPN) then setup a simple http server in your OpenVPN server and set this to your http://Server-IP
-# TEST_URL = "https://www.gstatic.com/generate_204"
-TEST_URL = "http://cp.cloudflare.com"
-TIMEOUT = 5000  # Timeout in milliseconds
-RETRIES = 15 * 4
-RETRY_DELAY = 10  # Delay between retries in seconds
-MIN_UPTIME = 90  # in percent
-CHECK_INTERVAL = 60  # Fallback check interval in seconds
-UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
-
-# LightMode
-LIGHTMODE_MAXIMUM_SERVERS = 10
-
-# Proxy
-PROXY_GROUP_NAME = "select"
+# Read configuration from environment variables
+API_URL = str(os.getenv("API_URL"))
+BEARER_TOKEN = str(os.getenv("BEARER_TOKEN")) # Bearer token for authorization
+TEST_URL = str(os.getenv("TEST_URL", "http://cp.cloudflare.com"))
+TIMEOUT = int(os.getenv("TIMEOUT", 5000)) # Timeout in milliseconds
+RETRIES = int(os.getenv("RETRIES", 15 * 4))
+RETRY_DELAY = int(os.getenv("RETRY_DELAY", 10)) # Delay between retries in seconds
+MIN_UPTIME = int(os.getenv("MIN_UPTIME", 90)) # in percent
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60)) # Fallback check interval in seconds
+UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 4 * 60 * 60)) # Update delay info every 4 hours
+LIGHTMODE_MAXIMUM_SERVERS = int(os.getenv("LIGHTMODE_MAXIMUM_SERVERS", 10))
+PROXY_GROUP_NAME = str(os.getenv("PROXY_GROUP_NAME", "select"))
 
 # Function to get headers with the Bearer token
 def get_headers():
