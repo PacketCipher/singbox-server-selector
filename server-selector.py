@@ -16,10 +16,9 @@ RETRY_DELAY = 10  # Delay between retries in seconds
 MIN_UPTIME = 90  # in percent
 CHECK_INTERVAL = 60  # Fallback check interval in seconds
 UPDATE_INTERVAL = 4 * 60 * 60  # Update delay info every 4 hours
-MAX_WORKERS = 300  # Maximum number of threads for parallel processing
 
 # LightMode
-LIGHTMODE_MAXIMUM_SERVERS = 30
+LIGHTMODE_MAXIMUM_SERVERS = 10
 
 # Proxy
 PROXY_GROUP_NAME = "select"
@@ -75,7 +74,7 @@ async def get_real_delay_multi(session, proxy_name):
 
 async def get_real_delay_single(session, proxy_name):
     """Gets the real delay of a proxy by single measurements, with retries on TimeoutError."""
-    number_of_attemps = 5
+    number_of_attemps = 3
     for attempt in range(number_of_attemps):
         try:
             async with session.get(
