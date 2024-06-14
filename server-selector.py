@@ -187,6 +187,7 @@ async def main_loop(session, light_mode):
         except Exception as e:
             print(f"An error occurred: {e}")
             await asyncio.sleep(5*60)  # Wait before trying again
+            print("Restarting...")
             continue # Restart the loop
 
 async def main():
