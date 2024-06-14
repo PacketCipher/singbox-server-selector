@@ -16,6 +16,7 @@ docker run -d \
   -e UPDATE_INTERVAL=14400 \
   -e LIGHTMODE_MAXIMUM_SERVERS=10 \
   -e PROXY_GROUP_NAME="select" \
+  -e LIGHT_MODE=1 \
   --name singbox-server-selector-container \
   singbox-server-selector
   ```

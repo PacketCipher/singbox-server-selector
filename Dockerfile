@@ -25,6 +25,7 @@ ENV CHECK_INTERVAL 60
 ENV UPDATE_INTERVAL 14400
 ENV LIGHTMODE_MAXIMUM_SERVERS 10
 ENV PROXY_GROUP_NAME "select"
+ENV LIGHT_MODE 1
 
 # Run app.py when the container launches
 CMD ["python", "server-selector.py"]
