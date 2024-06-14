@@ -27,5 +27,5 @@ ENV LIGHTMODE_MAXIMUM_SERVERS 10
 ENV PROXY_GROUP_NAME "select"
 ENV LIGHT_MODE 1
 
-# Run app.py when the container launches
+# Run server-selector.py when the container launches
 CMD ["python", "server-selector.py"]
