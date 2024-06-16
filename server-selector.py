@@ -146,7 +146,7 @@ async def fallback_to_working_proxy_by_order(session, sorted_proxies):
                     )
                     return
                 elif response.status == 404:
-                    raise Exception("Proxy Not Found!")
+                    print(f"{proxy_name} is not found. Trying the next one...")
                 else:
                     print(f"{proxy_name} is not responding. Trying the next one...")
         except Exception as e:
