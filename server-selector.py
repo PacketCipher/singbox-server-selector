@@ -129,7 +129,7 @@ def filter_single_working_proxies(proxies):
 async def fallback_to_working_proxy_by_order(session, sorted_proxies):
     """Finds the first working proxy in the sorted list and switches to it."""
     for proxy_name, _ in sorted_proxies:
-        try:
+        # try:
             async with session.get(
                 f"{API_URL}/proxies/{proxy_name}/delay",
                 headers=get_headers(),
@@ -147,8 +147,8 @@ async def fallback_to_working_proxy_by_order(session, sorted_proxies):
                     raise Exception("Proxy Not Found!")
                 else:
                     print(f"{proxy_name} is not responding. Trying the next one...")
-        except Exception as e:
-            print(f"Error checking {proxy_name}: {e}")
+        # except Exception as e:
+        #    print(f"Error checking {proxy_name}: {e}")
     print("No working proxies found.")
 
 async def fallback_to_working_proxy_by_latency(session, sorted_proxies):
