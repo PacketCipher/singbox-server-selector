@@ -149,7 +149,7 @@ async def fallback_to_working_proxy_by_order(session, sorted_proxies):
                     print(f"{proxy_name} is not responding. Trying the next one...")
         # except Exception as e:
         #    print(f"Error checking {proxy_name}: {e}")
-    print("No working proxies found.")
+    raise Exception("No working proxies found.")
 
 async def fallback_to_working_proxy_by_latency(session, sorted_proxies):
     """Finds the lowest delay working proxy in the sorted list and switches to it."""
