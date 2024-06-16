@@ -52,8 +52,10 @@ async def get_real_delay_multi(session, proxy_name):
         except asyncio.TimeoutError:
             delays.append(TIMEOUT)
 
-        # except Exception as e:
-        #     print(f"Error getting delay for {proxy_name}: {e}")
+        except Exception as e:
+            print(f"Error getting delay for {proxy_name}: {e}")
+            if isinstance(e, aiohttp.client_exceptions.ClientConnectorError):
+                raise Exception("API Endpoint Is Not Responding!")
 
         if delays.count(TIMEOUT) >= max(1, RETRIES * (1 - (MIN_UPTIME/100))):
             break
@@ -188,8 +190,6 @@ async def main_loop(session, light_mode):
 
         except Exception as e:
             print(f"An error occurred: {e}")
-            # await asyncio.sleep(60)  # Wait before trying again
-            # if isinstance(e, aiohttp.client_exceptions.ClientConnectorError):
             await asyncio.sleep(5*60)  # Wait for server to load before restart
             print("Restarting The Loop...")
             continue
