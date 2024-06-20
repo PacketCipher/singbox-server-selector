@@ -171,7 +171,7 @@ async def main_loop(session, light_mode):
     while True:
         try:
             proxies = await get_proxies(session)
-            print(f"Fetched {proxies} Proxies!")
+            print(f"Fetched {len(proxies)} Proxies!")
             if light_mode:
                 await update_delay_info(session, proxies, sampling_type="single")
                 working_proxies = filter_single_working_proxies(proxies)
