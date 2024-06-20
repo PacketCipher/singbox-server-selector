@@ -95,7 +95,7 @@ async def update_delay_info(session, proxies, sampling_type):
     """Updates the delay information for all proxies in parallel."""
     tasks = []
     for proxy_name, proxy_data in proxies.items():
-        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC"):
+        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC", "WireGuard"):
             tasks.append(update_proxy_delay(session, proxy_name, proxy_data, sampling_type))
     await asyncio.gather(*tasks, return_exceptions=False)
 
@@ -115,7 +115,7 @@ def sort_proxies_by_delay(proxies, sampling_type):
     sortable_proxies = [
         (proxy_name, proxy_data)
         for proxy_name, proxy_data in proxies.items()
-        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC")
+        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC", "WireGuard")
     ]
     return sorted(sortable_proxies, key=lambda item: item[1].get("delay_multi" if sampling_type == "multi" else "delay_single", float("inf")))
 
@@ -123,7 +123,7 @@ def filter_single_working_proxies(proxies):
     working_proxies = [
         (proxy_name, proxy_data)
         for proxy_name, proxy_data in proxies.items()
-        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC")
+        if proxy_data["type"] in ("VLESS", "Trojan", "Shadowsocks", "VMess", "TUIC", "WireGuard")
         and proxy_data.get("delay_single", float("inf")) < TIMEOUT
     ]
     return sorted(working_proxies, key=lambda item: item[1].get("delay_single", float("inf")))
