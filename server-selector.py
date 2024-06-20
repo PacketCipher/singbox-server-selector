@@ -16,7 +16,7 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60)) # Fallback check interval 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 4 * 60 * 60)) # Update delay info every 4 hours
 LIGHTMODE_MAXIMUM_SERVERS = int(os.getenv("LIGHTMODE_MAXIMUM_SERVERS", 10))
 PROXY_GROUP_NAME = str(os.getenv("PROXY_GROUP_NAME", "select"))
-LIGHT_MODE = bool(os.getenv("LIGHT_MODE", 1))
+LIGHT_MODE = bool(int(os.getenv("LIGHT_MODE", 1)))
 
 # Function to get headers with the Bearer token
 def get_headers():
