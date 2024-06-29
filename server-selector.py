@@ -13,7 +13,7 @@ RETRIES = int(os.getenv("RETRIES", 15 * 4))
 RETRY_DELAY = int(os.getenv("RETRY_DELAY", 10)) # Delay between retries in seconds
 MIN_UPTIME = int(os.getenv("MIN_UPTIME", 90)) # in percent
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 60)) # Fallback check interval in seconds
-UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 4 * 60 * 60)) # Update delay info every 4 hours
+UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 4)) # Update delay info every 4 hours
 LIGHTMODE_MAXIMUM_SERVERS = int(os.getenv("LIGHTMODE_MAXIMUM_SERVERS", 10))
 PROXY_GROUP_NAME = str(os.getenv("PROXY_GROUP_NAME", "select"))
 LIGHT_MODE = bool(int(os.getenv("LIGHT_MODE", 1)))
@@ -181,7 +181,7 @@ async def main_loop(session, light_mode):
 
             # Run fallback check every CHECK_INTERVAL seconds
             start_time = datetime.now()
-            while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL):
+            while datetime.now() - start_time < timedelta(seconds=UPDATE_INTERVAL*3600):
                 await fallback_to_working_proxy_by_order(session, sorted_proxies)
                 # await fallback_to_working_proxy_by_latency(session, sorted_proxies)
                 await asyncio.sleep(CHECK_INTERVAL)
