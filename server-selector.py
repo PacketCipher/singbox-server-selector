@@ -131,23 +131,27 @@ def filter_single_working_proxies(proxies):
 async def fallback_to_working_proxy_by_order(session, sorted_proxies):
     """Finds the first working proxy in the sorted list and switches to it."""
     for proxy_name, _ in sorted_proxies:
-        async with session.get(
-            f"{API_URL}/proxies/{proxy_name}/delay",
-            headers=get_headers(),
-            params={"timeout": TIMEOUT, "url": TEST_URL}
-        ) as response:
-            if response.status == 200:
-                print(f"Switching to {proxy_name}")
-                await session.put(
-                    f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
-                    headers=get_headers(),
-                    json={"name": proxy_name}
-                )
-                return
-            elif response.status == 404:
-                raise Exception(f"{proxy_name} is not found.")
-            else:
-                print(f"{proxy_name} is not responding. Trying the next one...")
+        try:
+            async with session.get(
+                f"{API_URL}/proxies/{proxy_name}/delay",
+                headers=get_headers(),
+                params={"timeout": TIMEOUT, "url": TEST_URL},
+                timeout=TIMEOUT/1000
+            ) as response:
+                if response.status == 200:
+                    print(f"Switching to {proxy_name}")
+                    await session.put(
+                        f"{API_URL}/proxies/{PROXY_GROUP_NAME}",
+                        headers=get_headers(),
+                        json={"name": proxy_name}
+                    )
+                    return
+                elif response.status == 404:
+                    raise Exception(f"{proxy_name} is not found.")
+                else:
+                    print(f"{proxy_name} is not responding. Trying the next one...")
+        except asyncio.TimeoutError:
+            continue
     print("No working proxies found.")
 
 async def fallback_to_working_proxy_by_latency(session, sorted_proxies):
