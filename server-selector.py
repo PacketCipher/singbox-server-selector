@@ -151,7 +151,15 @@ async def fallback_to_working_proxy_by_order(session, sorted_proxies):
                 else:
                     print(f"{proxy_name} is not responding. Trying the next one...")
         except asyncio.TimeoutError:
+            print(f"{proxy_name} timed out. Trying the next one...")
             continue
+
+        except Exception as e:
+            if "is not found" in str(e):
+                raise e
+            print(f"An error occurred with {proxy_name}: {e}. Trying the next one...")
+            continue
+        
     print("No working proxies found.")
 
 async def fallback_to_working_proxy_by_latency(session, sorted_proxies):
